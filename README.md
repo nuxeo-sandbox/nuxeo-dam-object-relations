@@ -2,7 +2,7 @@
 
 An example of plug-in automatically building relations between objects, based on a n aming convention.
 
-This plug-in depends on a specific Studio project (GitHub mainly used as a temp. backup)
+_This plug-in depends on a specific Studio project (GitHub mainly used as a temp. backup)_
 
 
 ## License
