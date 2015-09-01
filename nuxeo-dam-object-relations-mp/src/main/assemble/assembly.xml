@@ -31,6 +31,7 @@
       <artifact:set>
         <includes>
           <artifact groupId="nuxeo-dam-object-relations" scope="!test" type="!pom" />
+          <artifact groupId="org.nuxeo.datademo" scope="!test" type="!pom" />
         </includes>
       </artifact:set>
     </copy>

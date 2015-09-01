@@ -63,10 +63,13 @@ public class AssetRelationsBuilder {
     public static final String STYLEUMBERCONTAINER_TITLE = "01. Style Numbers";
 
     // As defined in the "asset_nature" vocabulary
-    public static final String VOC_COMPOSITION_RESOURCE = "Comp Ressource";
+    public static final String VOC_COMPOSITION_RESOURCE = "Comp Resource";
 
     // As defined in the "asset_nature" vocabulary
     public static final String VOC_COMPOSITION = "Comp";
+
+    // As defined in the "asset_nature" vocabulary
+    public static final String VOC_LICENSED_ART_RESOURCE = "Licensed Art Resource";
 
     // As defined in the "LicenseStatus" vocabulary
     public static final String VOC_LICENSED = "Licensed";
@@ -231,28 +234,40 @@ public class AssetRelationsBuilder {
         }
         titleNoExtension = title.substring(0, pos);
 
+        // Check if starts with 2 digits
+        int year = 0;
+        try {
+            year = Integer.parseInt(titleNoExtension.substring(0, 2));
+        } catch (Exception e) {
+            // Ignore, we just want to check if it starts with 2 numbers
+        }
+
+        // Starts with 2 digits and ends with the correct suffix => it's a composition
+        boolean foundComp = false;
         String titleLC = title.toLowerCase();
-        boolean isComposition;
         for (String compValue : COMPOSITION_VALUES) {
             pos = titleLC.indexOf(compValue);
             if (pos > 0) { // sure does not start with the value.
+                foundComp = true;
+                
                 titleNoExtension = titleNoExtension.substring(0, pos);
-                // Check if starts with 2 digits
-                try {
-                    Integer.parseInt(titleNoExtension.substring(0, 2));
-                    isComposition = true;
-                } catch (NumberFormatException nfe) {
-                    isComposition = false;
-                }
-
-                if (isComposition) {
-                    doc = HandleComposition();
+                if (year > 0) {
+                    doc = handleLicensedCompositionAsset();
 
                 } else {
-                    doc = HandleCompositionResource();
+                    doc = handleNonLicensedCompositionResource();
                 }
 
                 break;
+            }
+        }
+        
+        // Not a composition but still maybe an interesting final resource, to link to a License
+        if(!foundComp) {
+            if(year > 0) {
+                doc = handleLicensedNonCompositionAsset();
+            } else {
+                doc = HandleNonLicensedAsset();
             }
         }
 
@@ -264,116 +279,20 @@ public class AssetRelationsBuilder {
      */
     // 15BTMN002 King Of Bats cmp.psd
     // 15BTMN002B King Of Bats cmp.psd
-    protected DocumentModel HandleComposition() {
-
-        String tmp;
-        int pos;
-
-        // -------------------- Extract Info --------------------
-        assetType = ASSET_TYPE.COMPOSITION;
-
-        licenseYear = Integer.parseInt(titleNoExtension.substring(0, 2));
-        licenseCode = title.substring(2, 6);
-
-        seqNumberStr = "";
-        seqNumberSuffix = "";
-        name = "";
-        department = "";
-
-        // License sequence number is "as long the character is a digit
-        tmp = titleNoExtension.substring(6);
-        // Find the space after the seq. number
-        pos = tmp.indexOf(" ");
-        if (pos > 0) {
-
-            name = tmp.substring(pos + 1);
-            String seqNum = tmp.substring(0, pos);
-
-            SeqNumberExtractor sne = new SeqNumberExtractor(seqNum);
-            seqNumberStr = sne.numberAsStr;
-            seqNumberSuffix = sne.suffix;
-        }
-
-        // -------------------- Check --------------------
-        // If we don't have enough information, we just do nothing
-        if (StringUtils.isBlank(licenseCode) || StringUtils.isBlank(seqNumberStr) || StringUtils.isBlank(name)) {
-            return doc;
-        }
-
-        // -------------------- Link to the License --------------------
-        // (IPcontract document type in Studio project)
-        DocumentModel licenseDoc;
-        String licenseDocId;
-        String nxql = "SELECT * FROM IPcontract WHERE license:year = " + licenseYear;
-        nxql += " AND license:product_line_code = '" + licenseCode + "'";
-        nxql += USUAL_NXQL_LAST_FILTER;
-
-        DocumentModelList docs = session.query(nxql);
-        if (docs.size() == 0) {
-            licenseDoc = session.createDocumentModel(getIpContractRootPath(), "" + licenseYear + licenseCode + " "
-                    + licenseCode, "IPcontract");
-
-            licenseDoc.setPropertyValue("license:year", licenseYear);
-            licenseDoc.setPropertyValue("license:product_line_code", licenseCode);
-            // We don't have the product_line when extracting from a file
-            licenseDoc.setPropertyValue("license:product_line ", licenseCode);
-            licenseDoc.setPropertyValue("license:has_default_product_line", true);
-
-            licenseDoc = session.createDocument(licenseDoc);
-            licenseDoc = session.saveDocument(licenseDoc);
-        } else {
-            licenseDoc = docs.get(0);
-        }
-        licenseDocId = licenseDoc.getId();
-        doc.setPropertyValue("linking:license_id", licenseDocId);
-
-        // -------------------- Link to the ArtFileNumber --------------------
-        DocumentModel afnDoc;
-        // An ArtFileNumber document has the "linking" and the "ArtFileNumber" schemas (among others)
-        nxql = "SELECT * FROM ArtFileNumber WHERE linking:license_id = '" + licenseDocId + "'";
-        nxql += " AND art_file_number:number = '" + seqNumberStr + "'";
-        nxql += USUAL_NXQL_LAST_FILTER;
-        docs = session.query(nxql);
-        if (docs.size() == 0) {
-            afnDoc = session.createDocumentModel(getArtFileNumberContainerPath(), seqNumberStr + name, "ArtFileNumber");
-
-            afnDoc.setPropertyValue("linking:license_id", licenseDocId);
-            afnDoc.setPropertyValue("art_file_number:number", seqNumberStr);
-            afnDoc.setPropertyValue("art_file_number:short_name", name);
-
-            afnDoc = session.createDocument(afnDoc);
-            afnDoc = session.saveDocument(afnDoc);
-
-        } else {
-            afnDoc = docs.get(0);
-        }
-        doc.setPropertyValue("linking:art_file_number_id", afnDoc.getId());
-
-        // -------------------- Last Update(s) --------------------
-        doc.setPropertyValue("asset:nature", VOC_COMPOSITION);
-        doc.setPropertyValue("asset:variation_letter", seqNumberSuffix);
-        doc.setPropertyValue("asset:licensing", VOC_LICENSED);
-
-        // -------------------- Ok, we're done --------------------
-        doc = session.saveDocument(doc);
-        docModifiedAndSaved = true;
-        return doc;
+    protected DocumentModel handleLicensedCompositionAsset() {
+        
+        return autoLinkLicensedAsset(ASSET_TYPE.COMPOSITION, VOC_COMPOSITION);
     }
 
     // example: GR125 basic crew with side tie COMP.psd
     // or JR228 Gym Tote Comp.psd
     // GR is the syle, 228 (or 125) the sequence number, then we have the name
-    protected DocumentModel HandleCompositionResource() {
+    protected DocumentModel handleNonLicensedCompositionResource() {
 
         String tmp;
         int pos;
 
-        licenseYear = 0;
-        licenseCode = "";
-        seqNumberStr = "";
-        seqNumberSuffix = "";
-        name = "";
-        department = "";
+        initValues();
 
         // -------------------- Extract Info --------------------
         assetType = ASSET_TYPE.COMPOSITION_RESOURCE;
@@ -450,6 +369,124 @@ public class AssetRelationsBuilder {
         doc = session.saveDocument(doc);
         docModifiedAndSaved = true;
         return doc;
+    }
+    
+    protected DocumentModel handleLicensedNonCompositionAsset() {
+
+        return autoLinkLicensedAsset(ASSET_TYPE.OTHER, VOC_LICENSED_ART_RESOURCE);
+        
+    }
+    
+    protected DocumentModel HandleNonLicensedAsset() {
+
+        initValues();
+        
+        return doc;
+    }
+    
+    protected DocumentModel autoLinkLicensedAsset(ASSET_TYPE inType, String inNature) {
+        String tmp;
+        int pos;
+
+        initValues();
+
+        // -------------------- Extract Info --------------------
+        assetType = inType;
+        
+        licenseYear = Integer.parseInt(titleNoExtension.substring(0, 2));
+        licenseCode = title.substring(2, 6);
+
+        // License sequence number is as long the character is a digit
+        tmp = titleNoExtension.substring(6);
+        // Find the space after the seq. number
+        pos = tmp.indexOf(" ");
+        if (pos > 0) {
+
+            name = tmp.substring(pos + 1);
+            String seqNum = tmp.substring(0, pos);
+
+            SeqNumberExtractor sne = new SeqNumberExtractor(seqNum);
+            seqNumberStr = sne.numberAsStr;
+            seqNumberSuffix = sne.suffix;
+        }
+
+        // -------------------- Check --------------------
+        // If we don't have enough information, we just do nothing
+        if (StringUtils.isBlank(licenseCode) || StringUtils.isBlank(seqNumberStr) || StringUtils.isBlank(name)) {
+            return doc;
+        }
+
+        // -------------------- Link to the License --------------------
+        // (IPcontract document type in Studio project)
+        DocumentModel licenseDoc;
+        String licenseDocId;
+        String nxql = "SELECT * FROM IPcontract WHERE license:year = " + licenseYear;
+        nxql += " AND license:product_line_code = '" + licenseCode + "'";
+        nxql += USUAL_NXQL_LAST_FILTER;
+
+        DocumentModelList docs = session.query(nxql);
+        if (docs.size() == 0) {
+            licenseDoc = session.createDocumentModel(getIpContractRootPath(), "" + licenseYear + licenseCode + " "
+                    + licenseCode, "IPcontract");
+
+            licenseDoc.setPropertyValue("license:year", licenseYear);
+            licenseDoc.setPropertyValue("license:product_line_code", licenseCode);
+            // We don't have the product_line when extracting from a file
+            licenseDoc.setPropertyValue("license:product_line ", licenseCode);
+            licenseDoc.setPropertyValue("license:has_default_product_line", true);
+
+            licenseDoc = session.createDocument(licenseDoc);
+            licenseDoc = session.saveDocument(licenseDoc);
+        } else {
+            licenseDoc = docs.get(0);
+        }
+        licenseDocId = licenseDoc.getId();
+        doc.setPropertyValue("linking:license_id", licenseDocId);
+
+        // -------------------- Link to the ArtFileNumber --------------------
+        DocumentModel afnDoc;
+        // An ArtFileNumber document has the "linking" and the "ArtFileNumber" schemas (among others)
+        nxql = "SELECT * FROM ArtFileNumber WHERE linking:license_id = '" + licenseDocId + "'";
+        nxql += " AND art_file_number:number = '" + seqNumberStr + "'";
+        nxql += USUAL_NXQL_LAST_FILTER;
+        docs = session.query(nxql);
+        if (docs.size() == 0) {
+            afnDoc = session.createDocumentModel(getArtFileNumberContainerPath(), seqNumberStr + name, "ArtFileNumber");
+
+            afnDoc.setPropertyValue("linking:license_id", licenseDocId);
+            afnDoc.setPropertyValue("art_file_number:number", seqNumberStr);
+            afnDoc.setPropertyValue("art_file_number:short_name", name);
+
+            afnDoc = session.createDocument(afnDoc);
+            afnDoc = session.saveDocument(afnDoc);
+
+        } else {
+            afnDoc = docs.get(0);
+        }
+        doc.setPropertyValue("linking:art_file_number_id", afnDoc.getId());
+
+        // -------------------- Last Update(s) --------------------
+        doc.setPropertyValue("asset:nature", inNature);
+        doc.setPropertyValue("asset:variation_letter", seqNumberSuffix);
+        doc.setPropertyValue("asset:licensing", VOC_LICENSED);
+
+        // -------------------- Ok, we're done --------------------
+        doc = session.saveDocument(doc);
+        docModifiedAndSaved = true;
+        
+        return doc;
+    }
+    
+    protected void initValues() {
+
+        licenseYear = 0;
+        licenseCode = "";
+        seqNumberStr = "";
+        seqNumberSuffix = "";
+        name = "";
+        department = "";
+        
+        assetType = ASSET_TYPE.OTHER;
     }
 
     private class SeqNumberExtractor {
