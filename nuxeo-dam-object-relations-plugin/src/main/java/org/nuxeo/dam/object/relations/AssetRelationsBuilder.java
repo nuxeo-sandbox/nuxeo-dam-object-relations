@@ -16,12 +16,19 @@
  */
 package org.nuxeo.dam.object.relations;
 
+import java.io.Serializable;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+
 import org.apache.commons.lang.StringUtils;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.nuxeo.ecm.core.api.CoreSession;
 import org.nuxeo.ecm.core.api.DocumentModel;
 import org.nuxeo.ecm.core.api.DocumentModelList;
+import org.nuxeo.ecm.directory.api.DirectoryService;
+import org.nuxeo.runtime.api.Framework;
 
 /**
  * Making some hard coded assumptions here. For example:
@@ -52,6 +59,9 @@ public class AssetRelationsBuilder {
     // As defined in the Structure Template of the Studio project
     public static final String ARTFILENUMBERCONTAINER_TITLE = "02. Art File Numbers";
 
+    // As defined in the Structure Template of the Studio project
+    public static final String STYLEUMBERCONTAINER_TITLE = "01. Style Numbers";
+
     // As defined in the "asset_nature" vocabulary
     public static final String VOC_COMPOSITION_RESOURCE = "Comp Ressource";
 
@@ -64,18 +74,22 @@ public class AssetRelationsBuilder {
     // As defined in the "LicenseStatus" vocabulary
     public static final String VOC_NONLICENSED = "Non-Licensed";
 
+    public static final String VOC_DEPARTMENT = "Department";
+
     protected static String ipContractRootPath = null;
 
     protected static String artFileNumbeContainerPath = null;
 
-    public static final String USUAL_NXQL_FILTER = " AND ecm:isCheckedInVersion = 0 AND ecm:isProxy=0 AND ecm:currentLifeCycleState != 'deleted'";
+    protected static String styleNumbeContainerPath = null;
+
+    public static final String USUAL_NXQL_LAST_FILTER = " AND ecm:isCheckedInVersion = 0 AND ecm:isProxy=0 AND ecm:currentLifeCycleState != 'deleted'";
 
     DocumentModel doc;
 
     String title = null;
 
     // The title minus the file extension and the Composition Suffix
-    String shortTitle = null;
+    String titleNoExtension = null;
 
     int licenseYear = 0;
 
@@ -87,23 +101,57 @@ public class AssetRelationsBuilder {
 
     String name = "";
 
+    String department;
+
     String extension;
 
     ASSET_TYPE assetType = ASSET_TYPE.OTHER;
 
     CoreSession session;
 
+    boolean docModifiedAndSaved = false;
+
+    DirectoryService directoryService;
+
+    List<String> departmentValues = null;
+
     public AssetRelationsBuilder(DocumentModel inDoc, CoreSession inSession) {
         doc = inDoc;
         session = inSession;
         loadDocTitle();
+
+        directoryService = Framework.getService(DirectoryService.class);
+
+        org.nuxeo.ecm.directory.Session directorySession = directoryService.open(VOC_DEPARTMENT);
+        departmentValues = directorySession.getProjection(new HashMap<String, Serializable>(), "id");
+        directorySession.close();
+
+    }
+
+    // Not 100% reliable: If an Admin changes the vocabulary, we don't know that
+    // God enough for a demo.
+    protected void checkDepartmentValueInDirectory(String inValue) {
+        if (!departmentValues.contains(inValue)) {
+            Map<String, Object> entry = new HashMap<String, Object>();
+            entry.put("id", inValue);
+            entry.put("label", inValue);
+            entry.put("parent", "");
+            entry.put("obsolete", 0);
+            entry.put("ordering", 10000);
+
+            org.nuxeo.ecm.directory.Session directorySession = directoryService.open(VOC_DEPARTMENT);
+            directorySession.createEntry(entry);
+            directorySession.close();
+
+            departmentValues.add(inValue);
+        }
     }
 
     protected String getIpContractRootPath() {
 
         if (ipContractRootPath == null) {
             String nxql = "SELECT * FROM IPcontractRoot WHERE dc:title = '" + IPCONTRACTROOT_TITLE + "'";
-            nxql += USUAL_NXQL_FILTER;
+            nxql += USUAL_NXQL_LAST_FILTER;
 
             DocumentModelList docs = session.query(nxql);
             // We give up if we don't find it
@@ -121,7 +169,7 @@ public class AssetRelationsBuilder {
         if (artFileNumbeContainerPath == null) {
             String nxql = "SELECT * FROM ArtFileNumberContainer WHERE dc:title = '" + ARTFILENUMBERCONTAINER_TITLE
                     + "'";
-            nxql += USUAL_NXQL_FILTER;
+            nxql += USUAL_NXQL_LAST_FILTER;
 
             DocumentModelList docs = session.query(nxql);
             // We give up if we don't find it
@@ -133,6 +181,23 @@ public class AssetRelationsBuilder {
         }
 
         return artFileNumbeContainerPath;
+    }
+
+    protected String getStyleNumberContainerPath() {
+
+        if (styleNumbeContainerPath == null) {
+            String nxql = "SELECT * FROM StyleNumberContainer WHERE dc:title = '" + STYLEUMBERCONTAINER_TITLE + "'";
+            nxql += USUAL_NXQL_LAST_FILTER;
+
+            DocumentModelList docs = session.query(nxql);
+            // We give up if we don't find it
+            if (docs.size() == 0) {
+                throw new RuntimeException("Cannot find a IPcontractRoot with dc:title of " + STYLEUMBERCONTAINER_TITLE);
+            }
+            styleNumbeContainerPath = docs.get(0).getPathAsString();
+        }
+
+        return styleNumbeContainerPath;
     }
 
     /*
@@ -164,17 +229,17 @@ public class AssetRelationsBuilder {
         if (pos > 0) {
             extension = title.substring(pos + 1);
         }
-        shortTitle = title.substring(0, pos);
+        titleNoExtension = title.substring(0, pos);
 
         String titleLC = title.toLowerCase();
         boolean isComposition;
         for (String compValue : COMPOSITION_VALUES) {
             pos = titleLC.indexOf(compValue);
             if (pos > 0) { // sure does not start with the value.
-                shortTitle = shortTitle.substring(0, pos);
+                titleNoExtension = titleNoExtension.substring(0, pos);
                 // Check if starts with 2 digits
                 try {
-                    Integer.parseInt(shortTitle.substring(0, 2));
+                    Integer.parseInt(titleNoExtension.substring(0, 2));
                     isComposition = true;
                 } catch (NumberFormatException nfe) {
                     isComposition = false;
@@ -184,7 +249,7 @@ public class AssetRelationsBuilder {
                     doc = HandleComposition();
 
                 } else {
-                    // It is a "Composition Art Resource"
+                    doc = HandleCompositionResource();
                 }
 
                 break;
@@ -199,7 +264,7 @@ public class AssetRelationsBuilder {
      */
     // 15BTMN002 King Of Bats cmp.psd
     // 15BTMN002B King Of Bats cmp.psd
-    public DocumentModel HandleComposition() {
+    protected DocumentModel HandleComposition() {
 
         String tmp;
         int pos;
@@ -207,15 +272,16 @@ public class AssetRelationsBuilder {
         // -------------------- Extract Info --------------------
         assetType = ASSET_TYPE.COMPOSITION;
 
-        licenseYear = Integer.parseInt(shortTitle.substring(0, 2));
+        licenseYear = Integer.parseInt(titleNoExtension.substring(0, 2));
         licenseCode = title.substring(2, 6);
 
         seqNumberStr = "";
         seqNumberSuffix = "";
         name = "";
+        department = "";
 
         // License sequence number is "as long the character is a digit
-        tmp = shortTitle.substring(6);
+        tmp = titleNoExtension.substring(6);
         // Find the space after the seq. number
         pos = tmp.indexOf(" ");
         if (pos > 0) {
@@ -223,26 +289,14 @@ public class AssetRelationsBuilder {
             name = tmp.substring(pos + 1);
             String seqNum = tmp.substring(0, pos);
 
-            char[] chars = new char[seqNum.length()];
-            seqNum.getChars(0, seqNum.length(), chars, 0);
-            boolean isSuffix = false;
-            for (char c : chars) {
-                if (isSuffix) {
-                    seqNumberSuffix += Character.toString(c);
-                } else {
-                    if (Character.isDigit(c)) {
-                        seqNumberStr += Character.toString(c);
-                    } else {
-                        isSuffix = true;
-                        seqNumberSuffix += Character.toString(c);
-                    }
-                }
-            }
+            SeqNumberExtractor sne = new SeqNumberExtractor(seqNum);
+            seqNumberStr = sne.numberAsStr;
+            seqNumberSuffix = sne.suffix;
         }
 
         // -------------------- Check --------------------
         // If we don't have enough information, we just do nothing
-        if(StringUtils.isBlank(licenseCode) || StringUtils.isBlank(seqNumberSuffix) || StringUtils.isBlank(name) ) {
+        if (StringUtils.isBlank(licenseCode) || StringUtils.isBlank(seqNumberStr) || StringUtils.isBlank(name)) {
             return doc;
         }
 
@@ -252,7 +306,7 @@ public class AssetRelationsBuilder {
         String licenseDocId;
         String nxql = "SELECT * FROM IPcontract WHERE license:year = " + licenseYear;
         nxql += " AND license:product_line_code = '" + licenseCode + "'";
-        nxql += USUAL_NXQL_FILTER;
+        nxql += USUAL_NXQL_LAST_FILTER;
 
         DocumentModelList docs = session.query(nxql);
         if (docs.size() == 0) {
@@ -278,7 +332,7 @@ public class AssetRelationsBuilder {
         // An ArtFileNumber document has the "linking" and the "ArtFileNumber" schemas (among others)
         nxql = "SELECT * FROM ArtFileNumber WHERE linking:license_id = '" + licenseDocId + "'";
         nxql += " AND art_file_number:number = '" + seqNumberStr + "'";
-        nxql += USUAL_NXQL_FILTER;
+        nxql += USUAL_NXQL_LAST_FILTER;
         docs = session.query(nxql);
         if (docs.size() == 0) {
             afnDoc = session.createDocumentModel(getArtFileNumberContainerPath(), seqNumberStr + name, "ArtFileNumber");
@@ -299,11 +353,133 @@ public class AssetRelationsBuilder {
         doc.setPropertyValue("asset:nature", VOC_COMPOSITION);
         doc.setPropertyValue("asset:variation_letter", seqNumberSuffix);
         doc.setPropertyValue("asset:licensing", VOC_LICENSED);
-        
 
         // -------------------- Ok, we're done --------------------
         doc = session.saveDocument(doc);
+        docModifiedAndSaved = true;
         return doc;
+    }
+
+    // example: GR125 basic crew with side tie COMP.psd
+    // or JR228 Gym Tote Comp.psd
+    // GR is the syle, 228 (or 125) the sequence number, then we have the name
+    protected DocumentModel HandleCompositionResource() {
+
+        String tmp;
+        int pos;
+
+        licenseYear = 0;
+        licenseCode = "";
+        seqNumberStr = "";
+        seqNumberSuffix = "";
+        name = "";
+        department = "";
+
+        // -------------------- Extract Info --------------------
+        assetType = ASSET_TYPE.COMPOSITION_RESOURCE;
+
+        tmp = titleNoExtension;
+        pos = tmp.toLowerCase().lastIndexOf(" comp");
+        if (pos > 0) {
+            titleNoExtension = tmp.substring(0, pos);
+        }
+
+        tmp = titleNoExtension;
+        pos = tmp.indexOf(" ");
+        if (pos > 0) {
+            name = tmp.substring(pos + 1);
+            tmp = tmp.substring(0, pos);
+
+            String seqNum = "";
+            // First 1-n letters are the department
+            char[] chars = new char[tmp.length()];
+            tmp.getChars(0, tmp.length(), chars, 0);
+            int i = 0;
+            for (char c : chars) {
+                if (Character.isDigit(c)) {
+                    seqNum = tmp.substring(i);
+                    break;
+                } else {
+                    department += Character.toString(c);
+                }
+                i += 1;
+            }
+
+            SeqNumberExtractor sne = new SeqNumberExtractor(seqNum);
+            seqNumberStr = sne.numberAsStr;
+            seqNumberSuffix = sne.suffix;
+        }
+
+        // -------------------- Check --------------------
+        // If we don't have enough information, we just do nothing
+        if (StringUtils.isBlank(department) || StringUtils.isBlank(seqNumberStr) || StringUtils.isBlank(name)) {
+            return doc;
+        }
+
+        // -------------------- Link to the StyleNumber --------------------
+        checkDepartmentValueInDirectory(department);
+        DocumentModel styleDoc;
+        // A StyleNumber document has the "linking" and the "style_number" schemas (among others)
+        String nxql = "SELECT * FROM StyleNumber WHERE style_number:department = '" + department + "'";
+        nxql += " AND style_number:number = '" + seqNumberStr + "'";
+        nxql += " AND style_number:short_name = '" + name + "'";
+        nxql += USUAL_NXQL_LAST_FILTER;
+        DocumentModelList docs = session.query(nxql);
+        if (docs.size() == 0) {
+            styleDoc = session.createDocumentModel(getStyleNumberContainerPath(), department + seqNumberStr + name,
+                    "StyleNumber");
+
+            styleDoc.setPropertyValue("style_number:department", department);
+            styleDoc.setPropertyValue("style_number:number", seqNumberStr);
+            styleDoc.setPropertyValue("style_number:short_name", name);
+
+            styleDoc = session.createDocument(styleDoc);
+            styleDoc = session.saveDocument(styleDoc);
+
+        } else {
+            styleDoc = docs.get(0);
+        }
+        doc.setPropertyValue("linking:style_number_id", styleDoc.getId());
+
+        // -------------------- Last Update(s) --------------------
+        doc.setPropertyValue("asset:nature", VOC_COMPOSITION_RESOURCE);
+        doc.setPropertyValue("asset:variation_letter", seqNumberSuffix);
+        // doc.setPropertyValue("asset:licensing", VOC_LICENSED);
+
+        // -------------------- Ok, we're done --------------------
+        doc = session.saveDocument(doc);
+        docModifiedAndSaved = true;
+        return doc;
+    }
+
+    private class SeqNumberExtractor {
+        private String numberAsStr = "";
+
+        private String suffix = "";
+
+        private SeqNumberExtractor(String inSeqNum) {
+
+            if (StringUtils.isBlank(inSeqNum)) {
+                return;
+            }
+
+            char[] chars = new char[inSeqNum.length()];
+            inSeqNum.getChars(0, inSeqNum.length(), chars, 0);
+            boolean isSuffix = false;
+            for (char c : chars) {
+                if (isSuffix) {
+                    suffix += Character.toString(c);
+                } else {
+                    if (Character.isDigit(c)) {
+                        numberAsStr += Character.toString(c);
+                    } else {
+                        isSuffix = true;
+                        suffix += Character.toString(c);
+                    }
+                }
+            }
+        }
+
     }
 
     public int getLicenseYear() {
@@ -328,6 +504,14 @@ public class AssetRelationsBuilder {
 
     public ASSET_TYPE getAssetType() {
         return assetType;
+    }
+
+    public boolean docWasModifiedAndSaved() {
+        return docModifiedAndSaved;
+    }
+
+    public String getDepartment() {
+        return department;
     }
 
     public String toJsonString() {

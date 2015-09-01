@@ -8,5 +8,6 @@ Bundle-RequiredExecutionEnvironment: JavaSE-1.7
 Bundle-ManifestVersion: 2
 Bundle-Vendor: Nuxeo
 Nuxeo-Component: OSGI-INF/dam-object-relations.xml,OSGI-INF/extensions
- /org.nuxeo.dam.object.relations.AutoBuildAssetRelations.xml
+ /org.nuxeo.dam.object.relations.AutoBuildAssetRelations.xml,OSGI-INF/
+ extensions/org.nuxeo.dam.object.relations.UpdatePictures.xml
 

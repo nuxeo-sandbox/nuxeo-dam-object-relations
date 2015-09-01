@@ -47,8 +47,6 @@ public class AutoBuildAssetRelations {
         
         input = arb.run();
         
-        log.warn(arb.toJsonString());
-        
         return input; 
     }    
 
