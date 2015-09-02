@@ -177,7 +177,7 @@ public class AssetRelationsBuilder {
             DocumentModelList docs = session.query(nxql);
             // We give up if we don't find it
             if (docs.size() == 0) {
-                throw new RuntimeException("Cannot find a IPcontractRoot with dc:title of "
+                throw new RuntimeException("Cannot find a ArtFileNumberContainer with dc:title of "
                         + ARTFILENUMBERCONTAINER_TITLE);
             }
             artFileNumbeContainerPath = docs.get(0).getPathAsString();
@@ -195,7 +195,7 @@ public class AssetRelationsBuilder {
             DocumentModelList docs = session.query(nxql);
             // We give up if we don't find it
             if (docs.size() == 0) {
-                throw new RuntimeException("Cannot find a IPcontractRoot with dc:title of " + STYLEUMBERCONTAINER_TITLE);
+                throw new RuntimeException("Cannot find a StyleNumberContainer with dc:title of " + STYLEUMBERCONTAINER_TITLE);
             }
             styleNumbeContainerPath = docs.get(0).getPathAsString();
         }
