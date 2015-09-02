@@ -432,7 +432,7 @@ public class AssetRelationsBuilder {
             licenseDoc.setPropertyValue("license:year", licenseYear);
             licenseDoc.setPropertyValue("license:product_line_code", licenseCode);
             // We don't have the product_line when extracting from a file
-            licenseDoc.setPropertyValue("license:product_line ", licenseCode);
+            licenseDoc.setPropertyValue("license:product_line", licenseCode);
             licenseDoc.setPropertyValue("license:has_default_product_line", true);
 
             licenseDoc = session.createDocument(licenseDoc);
