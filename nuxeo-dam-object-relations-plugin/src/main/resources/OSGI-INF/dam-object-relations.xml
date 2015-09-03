@@ -1,6 +1,16 @@
 <component name="org.nuxeo.dam.object.relations.example">
 
-  
+	<require>org.nuxeo.ecm.platform.commandline.executor.service.defaultContrib</require>
+	<extension
+		target="org.nuxeo.ecm.platform.commandline.executor.service.CommandLineExecutorComponent"
+		point="command">
+		<command name="wkhtmltopdf-default" enabled="true">
+			<commandLine>wkhtmltopdf</commandLine>
+			<parameterString>-q -s Letter -O Portrait --print-media-type #{sourceFilePath} #{targetFilePath}</parameterString>
+			<installationDirective>You need to install wkhtmltopdf.
+			</installationDirective>
+		</command>
+	</extension>
 
 </component>
 
