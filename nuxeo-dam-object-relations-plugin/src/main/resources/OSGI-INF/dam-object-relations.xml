@@ -6,7 +6,7 @@
 		point="command">
 		<command name="wkhtmltopdf-default" enabled="true">
 			<commandLine>wkhtmltopdf</commandLine>
-			<parameterString>-q -s Letter -O Portrait --print-media-type #{sourceFilePath} #{targetFilePath}</parameterString>
+			<parameterString>-q -s Letter -O #{orientation} --print-media-type #{sourceFilePath} #{targetFilePath}</parameterString>
 			<installationDirective>You need to install wkhtmltopdf.
 			</installationDirective>
 		</command>

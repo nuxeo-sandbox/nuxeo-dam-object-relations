@@ -231,8 +231,8 @@ public class AssetRelationsBuilder {
         int pos = title.lastIndexOf('.');
         if (pos > 0) {
             extension = title.substring(pos + 1);
+            titleNoExtension = title.substring(0, pos);
         }
-        titleNoExtension = title.substring(0, pos);
 
         // Check if starts with 2 digits
         int year = 0;

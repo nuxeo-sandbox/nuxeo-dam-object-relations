@@ -45,18 +45,38 @@ import org.nuxeo.runtime.api.Framework;
 /**
  * We always take the jpeg file (in PIctureViews), not the orginal file:content
  */
-@Operation(id = GeneratePresentation.ID, category = Constants.CAT_CONVERSION, label = "GeneratePresentation", description = "Receives a list of assets to print")
+@Operation(id = GeneratePresentation.ID, category = Constants.CAT_CONVERSION, label = "GeneratePresentation", description = "Receives a list of assets to print. Possible values for style: 3x3, 2x2 or Landscape 6x3")
 public class GeneratePresentation {
 
     public static final String ID = "GeneratePresentation";
-    
+
     public static final String WKHTMLTOPDF_COMMAND = "wkhtmltopdf-default";
-    
+
     public static final String JPEG_PICTURE_VIEW = "OriginalJpeg";
+
+    // All these should be put in a template, so no need to change the plug-in to add new layout
+    // Globally, we should have templating system (using FreeMarker, typically).
+    // (no time to build this before a demo)
+    public static final String STYLE_2x2 = ".floating-box {float: left;width: 500px;height: 600px;margin: none; border: none;}\n"
+            + ".imgThumb {max-width: 500px;max-height: 600px;}\n"
+            + ".mainContainer {width: 1000px;}\n"
+            + "body {text-align:-webkit-center;}\n";
     
+    public static final String STYLE_3x3 = ".floating-box {float: left;width: 310px;height: 370px;margin: none; border: none;}\n"
+            + ".imgThumb {max-width: 310px;max-height: 370px;}\n"
+            + ".mainContainer {width: 1000px;}\n"
+            + "body {text-align:-webkit-center;}\n";
+    
+    public static final String STYLE_LANDSCAPE_6x3 = ".floating-box {float: left;width: 250px;height: 300px;margin: none; border: none;}\n"
+            + ".imgThumb {max-width: 250px;max-height: 300px;}\n"
+            + ".mainContainer {width: 1500px;}\n"
+            + "body {text-align:-webkit-center;}\n";
+
     public static final String IMAGE_DIV_TEMPLATE = "<div class='floating-box keeptogether'><img src='img/THE_IMAGE' class='imgThumb'></div>\n";
 
     DocumentModelList docs;
+    
+    String hardCodedStyle = "";
 
     @Context
     protected CoreSession session;
@@ -70,45 +90,70 @@ public class GeneratePresentation {
     @Param(name = "title", required = false)
     String title = "";
 
+    //@Param(name = "style", required = false, widget = Constants.W_OPTION, values = {"3x3", "2x2", "Landscape 6x3"})
+    @Param(name = "style", required = false)
+    String style = "3x3";
+
     @OperationMethod
     public Blob run(DocumentModelList input) throws IOException, CommandNotAvailable {
 
         docs = input;
+        
+        String orientation;
+        
+        if(StringUtils.isBlank(style)) {
+            style = "3x3";
+        }
 
         if (StringUtils.isBlank(fileName)) {
-            fileName = "Presentation-.pdf";
+            fileName = "Presentation-" + style + ".pdf";
+        }
+        
+        switch (style.toLowerCase()) {
+        case "landscape 6x3":
+            orientation = "Landscape";
+            hardCodedStyle = STYLE_LANDSCAPE_6x3;
+            break;
+            
+        case "3x3":
+            orientation = "Portrait";
+            hardCodedStyle = STYLE_3x3;
+            break;
+            
+        default:
+            orientation = "Portrait";
+            hardCodedStyle = STYLE_2x2;
+            break;
         }
 
         File indexFile = buildMiniSite();
         File destFile = File.createTempFile(java.util.UUID.randomUUID().toString(), ".pdf");
         destFile.deleteOnExit();
         Framework.trackFile(destFile, this);
+        
+        
 
         CmdParameters params = new CmdParameters();
         params.addNamedParameter("sourceFilePath", indexFile.getAbsolutePath());
         params.addNamedParameter("targetFilePath", destFile.getAbsolutePath());
+        params.addNamedParameter("orientation", orientation);
 
         // Run
         CommandLineExecutorService cles = Framework.getService(CommandLineExecutorService.class);
         ExecResult result = cles.execCommand(WKHTMLTOPDF_COMMAND, params);
-        
+
         if (result.getError() != null) {
-            throw new ClientException("Failed to execute the command <"
-                    + WKHTMLTOPDF_COMMAND + ">", result.getError());
+            throw new ClientException("Failed to execute the command <" + WKHTMLTOPDF_COMMAND + ">", result.getError());
         }
 
         if (!result.isSuccessful()) {
-            throw new ClientException("Failed to execute the command <"
-                    + WKHTMLTOPDF_COMMAND + ">. Final command [ "
-                    + result.getCommandLine()
-                    + " ] returned with error "
-                    + result.getReturnCode());
+            throw new ClientException("Failed to execute the command <" + WKHTMLTOPDF_COMMAND + ">. Final command [ "
+                    + result.getCommandLine() + " ] returned with error " + result.getReturnCode());
         }
-        
+
         FileBlob resultBlob = new FileBlob(destFile);
         resultBlob.setMimeType("application/pdf");
         resultBlob.setFilename(fileName);
-        
 
         return resultBlob;
     }
@@ -116,43 +161,41 @@ public class GeneratePresentation {
     protected File buildMiniSite() throws IOException {
 
         File indexHtml = null;
-        File mainFolder = new File( Files.createTempDirectory("wkhtmltopdf-" + java.util.UUID.randomUUID().toString()).toString() );
+        File mainFolder = new File(Files.createTempDirectory("wkhtmltopdf-" + java.util.UUID.randomUUID().toString())
+                                        .toString());
         String mainFolderPath = mainFolder.getAbsolutePath();
         File imgFolder = new File(mainFolder, "img");
         imgFolder.mkdir();
-        
+
         String html = "<!DOCTYPE html><html>";
         html += "<head><style>\n";
-        html += ".floating-box " + "{float: left;width: 300px;height: 350px;margin: 10px;border: 1px solid grey;}\n";
-        html += ".imgThumb {max-width: 300px;max-height: 350px;}\n";
-        html += ".mainContainer {width: 1000px;}\n";
-        html += "@media print {#mainCont .keeptogether {page-break-inside:avoid;}}\n";
+        html += hardCodedStyle + "\n";
         html += "</style></head>";
-        
+
         html += "<body>\n";
         html += "<div id='mainCont' class='mainContainer'>\n";
-        if(StringUtils.isNotBlank(title)) {
+        if (StringUtils.isNotBlank(title)) {
             html += "<h2 style='text-align: center;'>" + title + "</h2>\n";
         }
         Blob image;
         File imageFile;
         String imageName;
         int count = 0;
-        for(DocumentModel doc : docs) {
+        for (DocumentModel doc : docs) {
             if (doc.hasSchema("picture")) {
                 MultiviewPicture mvp = doc.getAdapter(MultiviewPicture.class);
-                
-                if(mvp != null) {
+
+                if (mvp != null) {
                     PictureView v = mvp.getView(JPEG_PICTURE_VIEW);
-                    if(v != null) {
+                    if (v != null) {
                         image = v.getBlob();
-                        if(image != null) {
-                            count  += 1;
+                        if (image != null) {
+                            count += 1;
                             imageName = "img-" + count + ".jpg";
                             imageFile = new File(imgFolder, imageName);
                             image.transferTo(imageFile);
-                            
-                            html += IMAGE_DIV_TEMPLATE.replace("THE_IMAGE", imageName );
+
+                            html += IMAGE_DIV_TEMPLATE.replace("THE_IMAGE", imageName);
                         }
                     }
                 }
@@ -161,9 +204,10 @@ public class GeneratePresentation {
         html += "</div>\n";
         html += "</body>\n";
         html += "</html>\n";
-        
+
         indexHtml = new File(mainFolder, "index.html");
         org.apache.commons.io.FileUtils.writeStringToFile(indexHtml, html, false);
+        
         
 
         return indexHtml;
