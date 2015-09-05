@@ -29,6 +29,7 @@ import org.nuxeo.ecm.automation.core.annotations.Operation;
 import org.nuxeo.ecm.automation.core.annotations.OperationMethod;
 import org.nuxeo.ecm.automation.core.annotations.Param;
 import org.nuxeo.ecm.core.api.Blob;
+import org.nuxeo.ecm.core.api.Blobs;
 import org.nuxeo.ecm.core.api.ClientException;
 import org.nuxeo.ecm.core.api.CoreSession;
 import org.nuxeo.ecm.core.api.DocumentModel;
@@ -79,8 +80,8 @@ public class GeneratePresentation {
     protected DocumentModelList docs;
 
     protected String hardCodedStyle = "";
-
-    protected Blob miniSite;
+    
+    protected File currentTempWorkingFolder = null;
 
     @Context
     protected CoreSession session;
@@ -111,6 +112,8 @@ public class GeneratePresentation {
 
         if (StringUtils.isBlank(fileName)) {
             fileName = "Presentation-" + style + ".pdf";
+        } else if(!fileName.toLowerCase().endsWith(".pdf")) {
+            fileName += ".pdf";
         }
 
         switch (style.toLowerCase()) {
@@ -131,12 +134,14 @@ public class GeneratePresentation {
         }
 
         File indexFile = buildMiniSite();
-        File destFile = File.createTempFile(java.util.UUID.randomUUID().toString(), ".pdf");
-        //Framework.trackFile(destFile, this);
+        // buildMiniSite() also setup the MINISITE_BLOB_VAR_NAME Context Variable
+
+        // Create a temp. File handled by Nuxeo
+        Blob resultPdf = Blobs.createBlobWithExtension(".pdf");
 
         CmdParameters params = new CmdParameters();
         params.addNamedParameter("sourceFilePath", indexFile.getAbsolutePath());
-        params.addNamedParameter("targetFilePath", destFile.getAbsolutePath());
+        params.addNamedParameter("targetFilePath", resultPdf.getFile().getAbsolutePath());
         params.addNamedParameter("orientation", orientation);
 
         // Run
@@ -151,23 +156,22 @@ public class GeneratePresentation {
             throw new ClientException("Failed to execute the command <" + WKHTMLTOPDF_COMMAND + ">. Final command [ "
                     + result.getCommandLine() + " ] returned with error " + result.getReturnCode());
         }
+        resultPdf.setMimeType("application/pdf");
+        resultPdf.setFilename(fileName);
 
-        FileBlob resultBlob = new FileBlob(destFile);
-        resultBlob.setMimeType("application/pdf");
-        resultBlob.setFilename(fileName);
+        // Now we used Nuxeo temp file Handling we can do some cleanup so we don't fill the tmp folder
+        cleanup();
 
-        ctx.put(MINISITE_BLOB_VAR_NAME, miniSite);
-
-        return resultBlob;
+        return resultPdf;
     }
 
     protected File buildMiniSite() throws IOException {
 
         File indexHtml = null;
-        File workingFolder = new File(Files.createTempDirectory(
+        currentTempWorkingFolder = new File(Files.createTempDirectory(
                 "wkhtmltopdf-minisite-" + java.util.UUID.randomUUID().toString()).toString());
         String htmlFolderName = fileName.replace(".pdf", "") + "-site";
-        File mainFolder = new File(workingFolder, htmlFolderName);
+        File mainFolder = new File(currentTempWorkingFolder, htmlFolderName);
         mainFolder.mkdir();
         // File mainFolder = new File(Files.createTempDirectory("wkhtmltopdf-" + java.util.UUID.randomUUID().toString())
         // .toString());
@@ -215,15 +219,31 @@ public class GeneratePresentation {
         indexHtml = new File(mainFolder, "index.html");
         org.apache.commons.io.FileUtils.writeStringToFile(indexHtml, html, false);
 
-        File miniSiteZip = new File(workingFolder, htmlFolderName + ".zip");
+        File miniSiteZip = new File(currentTempWorkingFolder, htmlFolderName + ".zip");
         ZipDirectory zd = new ZipDirectory(mainFolder.getAbsolutePath(), miniSiteZip.getAbsolutePath());
         zd.zip();
         // miniSiteZip is a valid .zip archive of the site
-        miniSite = new FileBlob(miniSiteZip);
-        miniSite.setMimeType("application/zip");
-        miniSite.setFilename(htmlFolderName + ".zip");
+        Blob fileSiteZip = new FileBlob(miniSiteZip);
+
+        // Now, transfer to a temp. blob handled by Nuxeo
+        // (we'll delete everyting else later)
+        Blob tempBlob = Blobs.createBlobWithExtension(".zip");
+        fileSiteZip.transferTo(tempBlob.getFile());
+        tempBlob.setMimeType("application/zip");
+        tempBlob.setFilename(htmlFolderName + ".zip");
+
+        ctx.put(MINISITE_BLOB_VAR_NAME, tempBlob);
 
         return indexHtml;
+    }
+    
+    protected void cleanup() throws IOException {
+        
+        if(currentTempWorkingFolder != null && currentTempWorkingFolder.exists()) {
+            org.apache.commons.io.FileUtils.deleteDirectory(currentTempWorkingFolder);
+        }
+        
+        currentTempWorkingFolder = null;
     }
 
 }
