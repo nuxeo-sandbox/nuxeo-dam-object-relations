@@ -1,5 +1,5 @@
 /*
- * (C) Copyright ${year} Nuxeo SA (http://nuxeo.com/) and contributors.
+ * (C) Copyright 2015 Nuxeo SA (http://nuxeo.com/) and contributors.
  *
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the GNU Lesser General Public License
@@ -12,7 +12,7 @@
  * Lesser General Public License for more details.
  *
  * Contributors:
- *     thibaud
+ *     Thibaud Arguillere
  */
 
 package org.nuxeo.dam.object.relations;
@@ -45,7 +45,7 @@ import org.nuxeo.runtime.api.Framework;
 /**
  * We always take the jpeg file (in PIctureViews), not the orginal file:content
  */
-@Operation(id = GeneratePresentation.ID, category = Constants.CAT_CONVERSION, label = "GeneratePresentation", description = "Receives a list of assets to print. Possible values for style: 3x3, 2x2 or Landscape 6x3")
+@Operation(id = GeneratePresentation.ID, category = Constants.CAT_CONVERSION, label = "GeneratePresentation", description = "Receives a list of assets to print. Possible values for style: 3x3, 2x2 or Landscape 6x3. Also, the generatePresentation_site context variable is filled with a Blob of the zipped-site.")
 public class GeneratePresentation {
 
     public static final String ID = "GeneratePresentation";
@@ -54,6 +54,8 @@ public class GeneratePresentation {
 
     public static final String JPEG_PICTURE_VIEW = "OriginalJpeg";
 
+    public static final String MINISITE_BLOB_VAR_NAME = "generatePresentation_site";
+
     // All these should be put in a template, so no need to change the plug-in to add new layout
     // Globally, we should have templating system (using FreeMarker, typically).
     // (no time to build this before a demo)
@@ -61,12 +63,12 @@ public class GeneratePresentation {
             + ".imgThumb {max-width: 500px;max-height: 600px;}\n"
             + ".mainContainer {width: 1000px;}\n"
             + "body {text-align:-webkit-center;}\n";
-    
+
     public static final String STYLE_3x3 = ".floating-box {float: left;width: 310px;height: 370px;margin: none; border: none;}\n"
             + ".imgThumb {max-width: 310px;max-height: 370px;}\n"
             + ".mainContainer {width: 1000px;}\n"
             + "body {text-align:-webkit-center;}\n";
-    
+
     public static final String STYLE_LANDSCAPE_6x3 = ".floating-box {float: left;width: 250px;height: 300px;margin: none; border: none;}\n"
             + ".imgThumb {max-width: 250px;max-height: 300px;}\n"
             + ".mainContainer {width: 1500px;}\n"
@@ -74,9 +76,11 @@ public class GeneratePresentation {
 
     public static final String IMAGE_DIV_TEMPLATE = "<div class='floating-box keeptogether'><img src='img/THE_IMAGE' class='imgThumb'></div>\n";
 
-    DocumentModelList docs;
-    
-    String hardCodedStyle = "";
+    protected DocumentModelList docs;
+
+    protected String hardCodedStyle = "";
+
+    protected Blob miniSite;
 
     @Context
     protected CoreSession session;
@@ -90,7 +94,7 @@ public class GeneratePresentation {
     @Param(name = "title", required = false)
     String title = "";
 
-    //@Param(name = "style", required = false, widget = Constants.W_OPTION, values = {"3x3", "2x2", "Landscape 6x3"})
+    // @Param(name = "style", required = false, widget = Constants.W_OPTION, values = {"3x3", "2x2", "Landscape 6x3"})
     @Param(name = "style", required = false)
     String style = "3x3";
 
@@ -98,28 +102,28 @@ public class GeneratePresentation {
     public Blob run(DocumentModelList input) throws IOException, CommandNotAvailable {
 
         docs = input;
-        
+
         String orientation;
-        
-        if(StringUtils.isBlank(style)) {
+
+        if (StringUtils.isBlank(style)) {
             style = "3x3";
         }
 
         if (StringUtils.isBlank(fileName)) {
             fileName = "Presentation-" + style + ".pdf";
         }
-        
+
         switch (style.toLowerCase()) {
         case "landscape 6x3":
             orientation = "Landscape";
             hardCodedStyle = STYLE_LANDSCAPE_6x3;
             break;
-            
+
         case "3x3":
             orientation = "Portrait";
             hardCodedStyle = STYLE_3x3;
             break;
-            
+
         default:
             orientation = "Portrait";
             hardCodedStyle = STYLE_2x2;
@@ -128,10 +132,7 @@ public class GeneratePresentation {
 
         File indexFile = buildMiniSite();
         File destFile = File.createTempFile(java.util.UUID.randomUUID().toString(), ".pdf");
-        destFile.deleteOnExit();
-        Framework.trackFile(destFile, this);
-        
-        
+        //Framework.trackFile(destFile, this);
 
         CmdParameters params = new CmdParameters();
         params.addNamedParameter("sourceFilePath", indexFile.getAbsolutePath());
@@ -155,15 +156,21 @@ public class GeneratePresentation {
         resultBlob.setMimeType("application/pdf");
         resultBlob.setFilename(fileName);
 
+        ctx.put(MINISITE_BLOB_VAR_NAME, miniSite);
+
         return resultBlob;
     }
 
     protected File buildMiniSite() throws IOException {
 
         File indexHtml = null;
-        File mainFolder = new File(Files.createTempDirectory("wkhtmltopdf-" + java.util.UUID.randomUUID().toString())
-                                        .toString());
-        String mainFolderPath = mainFolder.getAbsolutePath();
+        File workingFolder = new File(Files.createTempDirectory(
+                "wkhtmltopdf-minisite-" + java.util.UUID.randomUUID().toString()).toString());
+        String htmlFolderName = fileName.replace(".pdf", "") + "-site";
+        File mainFolder = new File(workingFolder, htmlFolderName);
+        mainFolder.mkdir();
+        // File mainFolder = new File(Files.createTempDirectory("wkhtmltopdf-" + java.util.UUID.randomUUID().toString())
+        // .toString());
         File imgFolder = new File(mainFolder, "img");
         imgFolder.mkdir();
 
@@ -207,8 +214,14 @@ public class GeneratePresentation {
 
         indexHtml = new File(mainFolder, "index.html");
         org.apache.commons.io.FileUtils.writeStringToFile(indexHtml, html, false);
-        
-        
+
+        File miniSiteZip = new File(workingFolder, htmlFolderName + ".zip");
+        ZipDirectory zd = new ZipDirectory(mainFolder.getAbsolutePath(), miniSiteZip.getAbsolutePath());
+        zd.zip();
+        // miniSiteZip is a valid .zip archive of the site
+        miniSite = new FileBlob(miniSiteZip);
+        miniSite.setMimeType("application/zip");
+        miniSite.setFilename(htmlFolderName + ".zip");
 
         return indexHtml;
     }
