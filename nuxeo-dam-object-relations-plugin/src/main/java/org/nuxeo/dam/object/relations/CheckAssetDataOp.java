@@ -70,6 +70,7 @@ public class CheckAssetDataOp {
         for(int i = 0; i < FIELDS_MAX; ++i) {
             value = (String) inDoc.getPropertyValue(FIELDS[i]);
             if(StringUtils.isNotBlank(value)) {
+                value = value.replace("/","-");
                 org.nuxeo.ecm.directory.Session directorySession = directoryService.open(VOCS[i]);                
                 if (!directorySession.hasEntry(value)) {
                     Map<String, Object> entry = new HashMap<String, Object>();

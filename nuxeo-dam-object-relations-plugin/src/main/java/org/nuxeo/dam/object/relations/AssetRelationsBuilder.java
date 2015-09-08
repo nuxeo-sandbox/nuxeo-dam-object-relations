@@ -134,6 +134,7 @@ public class AssetRelationsBuilder {
     // Not 100% reliable: If an Admin changes the vocabulary, we don't know that
     // God enough for a demo.
     protected void checkDepartmentValueInDirectory(String inValue) {
+        inValue = inValue == null ? null : inValue.replace("/",  "-");
         if (!departmentValues.contains(inValue)) {
             Map<String, Object> entry = new HashMap<String, Object>();
             entry.put("id", inValue);
