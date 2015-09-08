@@ -36,7 +36,7 @@ import org.nuxeo.runtime.api.Framework;
 /**
  * 
  */
-@Operation(id = CheckAssetDataOp.ID, category = Constants.CAT_DOCUMENT, label = "CheckAssetDataOp", description = "Create vocabulary entry if needed, etc.")
+@Operation(id = CheckAssetDataOp.ID, category = Constants.CAT_DOCUMENT, label = "Demo: Check Asset Data", description = "Create vocabulary entry if needed, etc.")
 public class CheckAssetDataOp {
 
     public static final String ID = "CheckAssetDataOp";
