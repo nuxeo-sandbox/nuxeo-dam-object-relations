@@ -38,12 +38,12 @@ import org.nuxeo.runtime.transaction.TransactionHelper;
 /**
  * 
  */
-@Operation(id=UpdatePictures.ID, category=Constants.CAT_SERVICES, label="Demo: Update Pictures", description="WARNING: If you have a lot of Pictures, call this operaiton from an async. event.")
-public class UpdatePictures {
+@Operation(id=UpdatePicturesOp.ID, category=Constants.CAT_SERVICES, label="Demo: Update Pictures", description="WARNING: If you have a lot of Pictures, call this operaiton from an async. event.")
+public class UpdatePicturesOp {
 
     public static final String ID = "Demo.UpdatePictures";
     
-    private static final Log log = LogFactory.getLog(UpdatePictures.class);
+    private static final Log log = LogFactory.getLog(UpdatePicturesOp.class);
     
     protected static final int COMMIT_MODULO = 50;
     

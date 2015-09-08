@@ -46,8 +46,8 @@ import org.nuxeo.runtime.api.Framework;
 /**
  * We always take the jpeg file (in PIctureViews), not the orginal file:content
  */
-@Operation(id = GeneratePresentation.ID, category = Constants.CAT_CONVERSION, label = "GeneratePresentation", description = "Receives a list of assets to print. Possible values for style: 3x3, 2x2 or Landscape 6x3. Also, the generatePresentation_site context variable is filled with a Blob of the zipped-site.")
-public class GeneratePresentation {
+@Operation(id = GeneratePresentationOp.ID, category = Constants.CAT_CONVERSION, label = "GeneratePresentation", description = "Receives a list of assets to print. Possible values for style: 3x3, 2x2 or Landscape 6x3. Also, the generatePresentation_site context variable is filled with a Blob of the zipped-site.")
+public class GeneratePresentationOp {
 
     public static final String ID = "GeneratePresentation";
 

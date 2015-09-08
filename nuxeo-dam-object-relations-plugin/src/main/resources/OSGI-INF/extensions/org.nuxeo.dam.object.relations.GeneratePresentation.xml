@@ -1,8 +1,0 @@
-<component name="org.nuxeo.dam.object.relations.GeneratePresentation">
-
-  <extension target="org.nuxeo.ecm.core.operation.OperationServiceComponent"
-    point="operations" >
-      <operation class="org.nuxeo.dam.object.relations.GeneratePresentation" />
-   </extension>
-    
-</component>

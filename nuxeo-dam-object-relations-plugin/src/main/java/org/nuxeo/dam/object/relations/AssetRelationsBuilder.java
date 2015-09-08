@@ -188,18 +188,23 @@ public class AssetRelationsBuilder {
 
     protected String getStyleNumberContainerPath() {
 
+        return getStyleNumberContainerPath(session);
+    }
+    
+    public static String getStyleNumberContainerPath(CoreSession inSession) {
+
         if (styleNumbeContainerPath == null) {
             String nxql = "SELECT * FROM StyleNumberContainer WHERE dc:title = '" + STYLEUMBERCONTAINER_TITLE + "'";
             nxql += USUAL_NXQL_LAST_FILTER;
 
-            DocumentModelList docs = session.query(nxql);
+            DocumentModelList docs = inSession.query(nxql);
             // We give up if we don't find it
             if (docs.size() == 0) {
                 throw new RuntimeException("Cannot find a StyleNumberContainer with dc:title of " + STYLEUMBERCONTAINER_TITLE);
             }
             styleNumbeContainerPath = docs.get(0).getPathAsString();
         }
-
+        
         return styleNumbeContainerPath;
     }
 

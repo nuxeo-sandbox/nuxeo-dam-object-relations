@@ -30,12 +30,12 @@ import org.nuxeo.ecm.core.api.DocumentModel;
 /**
  * 
  */
-@Operation(id=AutoBuildAssetRelations.ID, category=Constants.CAT_DOCUMENT, label="AutoBuildAssetRelations", description="")
-public class AutoBuildAssetRelations {
+@Operation(id=AutoBuildAssetRelationsOp.ID, category=Constants.CAT_DOCUMENT, label="AutoBuildAssetRelations", description="")
+public class AutoBuildAssetRelationsOp {
 
     public static final String ID = "AutoBuildAssetRelations";
     
-    private static final Log log = LogFactory.getLog(AutoBuildAssetRelations.class);
+    private static final Log log = LogFactory.getLog(AutoBuildAssetRelationsOp.class);
     
     @Context
     protected CoreSession session;
