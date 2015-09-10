@@ -30,6 +30,8 @@ import org.nuxeo.ecm.automation.core.annotations.OperationMethod;
 import org.nuxeo.ecm.automation.core.annotations.Param;
 import org.nuxeo.ecm.core.api.CoreSession;
 import org.nuxeo.ecm.core.api.DocumentModel;
+import org.nuxeo.ecm.core.schema.SchemaManager;
+import org.nuxeo.ecm.core.schema.types.Schema;
 import org.nuxeo.ecm.directory.api.DirectoryService;
 import org.nuxeo.runtime.api.Framework;
 
@@ -44,6 +46,8 @@ public class CheckAssetDataOp {
     protected static final String[] FIELDS = { "asset:body_type", "asset:body_color", "asset:print_location" };
 
     protected static final String[] VOCS = { "BodyType", "BodyColor", "PrintLocation" };
+    
+    protected static boolean[] VOCS_HAS_PARENT = {false, false, false};
 
     protected static final int FIELDS_MAX = FIELDS.length - 1;
         
@@ -64,6 +68,13 @@ public class CheckAssetDataOp {
         
         if(directoryService == null) {
             directoryService = Framework.getService(DirectoryService.class);
+
+            SchemaManager schemaManager = Framework.getService(SchemaManager.class);
+            for(int i = 0; i < FIELDS_MAX; ++i) {
+                String dirSchema = directoryService.getDirectorySchema(VOCS[i]);
+                Schema schema = schemaManager.getSchema(dirSchema);
+                VOCS_HAS_PARENT[i] = schema.hasField("parent");
+            }
         }
 
         // Handle the vocabularies
@@ -76,7 +87,9 @@ public class CheckAssetDataOp {
                     Map<String, Object> entry = new HashMap<String, Object>();
                     entry.put("id", value);
                     entry.put("label", value);
-                    entry.put("parent", "");
+                    if(VOCS_HAS_PARENT[i]) {
+                        entry.put("parent", "");
+                    }
                     entry.put("obsolete", 0);
                     entry.put("ordering", 0);
 
