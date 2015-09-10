@@ -54,7 +54,7 @@ public class CheckAssetDataOp {
     @Context
     protected CoreSession session;
 
-    @Param(name = "save", required = false, values = { " false" })
+    @Param(name = "save", required = false, values = { "false" })
     boolean save = false;
 
     @OperationMethod
